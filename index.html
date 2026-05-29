@@ -87,7 +87,6 @@
             margin-bottom: 15px;
         }
 
-        /* Progress Bar ဒီဇိုင်းအသစ် */
         .progress-container {
             display: none;
             background: #1e1e2f;
@@ -168,6 +167,18 @@
             white-space: pre-wrap;
         }
 
+        /* စာရိုက်နေသည့် ပုံစံ cursor line */
+        .typing::after {
+            content: "▋";
+            animation: blink 0.6s infinite;
+            color: #a855f7;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
+        }
+
         .editor-section {
             margin-top: 30px;
             border-top: 1px solid #222;
@@ -229,7 +240,7 @@
 
     <div id="resultContainer">
         <div class="glow-box">
-            <div class="box-content" id="mainResultText" style="color: #666;">ဗီဒီယိုထည့်ပြီး ဘာသာပြန်ဆိုလျှင် ရလဒ်များကို ဤနေရာတွင် ပုံစံတကျ ခွဲခြားပြသပေးပါမည်...</div>
+            <div class="box-content" id="mainResultText" style="color: #666;">ဗီဒီယိုထည့်ပြီး ဘာသာပြန်ဆိုလျှင် ရလဒ်များကို AI များကဲ့သို့ တစ်လုံးချင်းစီ ရိုက်ပြပေးပါမည်...</div>
         </div>
     </div>
 
@@ -255,7 +266,6 @@ function updateFileInfo() {
     }
 }
 
-// Progress Bar ကို ထိန်းချုပ်သည့် Function
 function showProgress(status, percent) {
     const progressArea = document.getElementById('progressArea');
     const progressStatus = document.getElementById('progressStatus');
@@ -284,27 +294,23 @@ async function startTranslation() {
     }
 
     const file = fileInput.files[0];
-    
-    // ၁။ ဗီဒီယိုဖိုင်ကို စတင်ဖတ်ယူခြင်း (Upload Stage အတုယူခြင်း)
     showProgress("⏳ ဗီဒီယိုဖိုင်ကို စစ်ဆေးဖတ်ယူနေသည်...", 10);
     
     try {
         const base64Data = await fileToBase64WithProgress((percent) => {
-            let actualPercent = Math.floor(10 + (percent * 0.4)); // ၁၀% ကနေ ၅၀% အထိ ဗီဒီယိုဖတ်နှုန်းပြရန်
+            let actualPercent = Math.floor(10 + (percent * 0.4));
             showProgress("⏳ ဗီဒီယိုကို စနစ်အတွင်းသို့ တင်သွင်းနေပါသည်...", actualPercent);
         }, file);
 
-        // ၂။ AI သို့ ပေးပို့ပြီး စာသားပြောင်းလဲခြင်း အဆင့်
         showProgress("⏳ Gemini AI ဆီသို့ ပေးပို့ပြီး ဘာသာပြန်နေပါသည်...", 65);
 
-        // AI ရာခိုင်နှုန်း ပုံမှန်တက်သွားစေရန် Animation ပုံစံ ပြုလုပ်ခြင်း
         let aiProgress = 65;
         const interval = setInterval(() => {
             if (aiProgress < 95) {
-                aiProgress += 2;
-                showProgress("⏳ AI စနစ်မှ စာသားများ ပြောင်းလဲနေပါသည်...", aiProgress);
+                aiProgress += 1;
+                showProgress("⏳ AI စနစ်မှ စာသားများ ပြောင်းလဲရန် စဉ်းစားနေပါသည်...", aiProgress);
             }
-        }, 1200);
+        }, 1500);
 
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cryptoKey}`, {
             method: "POST",
@@ -323,34 +329,16 @@ async function startTranslation() {
         const json = await response.json();
         
         if(json.candidates && json.candidates[0].content.parts[0].text) {
-            // အောင်မြင်သွားလျှင် ၁၀၀% ပြရန်
             showProgress("✅ ဘာသာပြန်ဆိုမှု ၁၀၀% အောင်မြင်စွာ ပြီးဆုံးပါပြီ။", 100);
             
             const rawText = json.candidates[0].content.parts[0].text;
-            const paragraphs = rawText.split(/(?=စာပိုဒ် \d+|စာပိုဒ်\d+)/g);
+            const paragraphs = rawText.split(/(?=စာပိုဒ် \d+|စာပိုဒ်\d+)/g).filter(p => p.trim());
             
-            let htmlOutput = "";
-            let count = 1;
+            resultContainer.innerHTML = ""; // နေရာအဟောင်းကို ရှင်းထုတ်ခြင်း
             
-            paragraphs.forEach(p => {
-                if(p.trim()) {
-                    let cleanText = p.replace(/စာပိုဒ် \d+|စာပိုဒ်\d+/g, "").trim();
-                    if(cleanText) {
-                        htmlOutput += `
-                            <div class="glow-box" onclick="appendToEditor(this)">
-                                <div class="box-header">
-                                    <span>စာပိုဒ် ${count}</span>
-                                    <span style="color:#a855f7; font-size:10px;">နှိပ်ပါက စာပေါင်းထည့်မည် +</span>
-                                </div>
-                                <div class="box-content">${cleanText}</div>
-                            </div>
-                        `;
-                        count++;
-                    }
-                }
-            });
+            // AI ကဲ့သို့ တရွေ့ရွေ့ စာရိုက်ပြမည့် စနစ်ကို စတင်ခေါ်ယူခြင်း
+            streamParagraphs(paragraphs, resultContainer, 0);
             
-            resultContainer.innerHTML = htmlOutput || `<div class="glow-box"><div class="box-content">${rawText}</div></div>`;
         } else {
             showProgress("❌ ချိတ်ဆက်မှု မအောင်မြင်ပါ။ Key မှားယွင်းနေနိုင်ပါသည်။", 0);
             resultContainer.innerHTML = `<div class="glow-box" style="border-color:#ef4444;"><div class="box-content" style="color:#ef4444;">${JSON.stringify(json)}</div></div>`;
@@ -362,7 +350,47 @@ async function startTranslation() {
     }
 }
 
-// ဗီဒီယိုဖတ်စဉ် ရာခိုင်နှုန်း တွက်ချက်ပေးသည့် စနစ်
+// AI သတ်ပုံအတိုင်း တစ်လုံးချင်းစီ ရိုက်ပြပေးမည့် တန်ဖိုးမြှင့် Function
+function streamParagraphs(paragraphs, container, index) {
+    if (index >= paragraphs.length) return;
+
+    let p = paragraphs[index];
+    let cleanText = p.replace(/စာပိုဒ် \d+|စာပိုဒ်\d+/g, "").trim();
+    let displayIndex = index + 1;
+
+    // Box အသစ်တစ်ခုကို အရင်ဆောက်လိုက်သည်
+    const boxId = `box-stream-${displayIndex}`;
+    const contentId = `content-stream-${displayIndex}`;
+    
+    const boxHTML = `
+        <div class="glow-box" id="${boxId}" onclick="appendToEditor(this)">
+            <div class="box-header">
+                <span>စာပိုဒ် ${displayIndex}</span>
+                <span style="color:#a855f7; font-size:10px;">နှိပ်ပါက စာပေါင်းထည့်မည် +</span>
+            </div>
+            <div class="box-content typing" id="${contentId}"></div>
+        </div>
+    `;
+    container.innerHTML += boxHTML;
+
+    const contentElement = document.getElementById(contentId);
+    let charIndex = 0;
+
+    // တစ်လုံးချင်းစီ စာရိုက်ပြသည့် Logic
+    function typeChar() {
+        if (charIndex < cleanText.length) {
+            contentElement.innerText += cleanText.charAt(charIndex);
+            charIndex++;
+            setTimeout(typeChar, 25); // စာရိုက်နှုန်း အမြန်နှုန်း (25ms)
+        } else {
+            contentElement.classList.remove("typing"); // ပြီးသွားရင် Typing Cursor ဖြုတ်သည်
+            // နောက်တစ်ပိုဒ်ကို ဆက်ပြီး ရိုက်ပြသည်
+            streamParagraphs(paragraphs, container, index + 1);
+        }
+    }
+    typeChar();
+}
+
 function fileToBase64WithProgress(progressCallback, file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -382,7 +410,7 @@ function fileToBase64WithProgress(progressCallback, file) {
 function appendToEditor(element) {
     const text = element.querySelector('.box-content').innerText;
     const editor = document.getElementById('editorBox');
-    if (editor.innerText.includes("ბელბექခြမ်းမှ")) {
+    if (editor.innerText.includes("ဘယ်ဘက်ခြမ်းမှ")) {
         editor.innerText = text;
     } else {
         editor.innerText += "\n\n" + text;
@@ -391,6 +419,7 @@ function appendToEditor(element) {
     element.style.borderColor = "#10b981";
 }
 
+// ကျန်တဲ့ Function များကို မူလအတိုင်း ထိန်းသိမ်းထားပါသည်
 function clearEditor() {
     document.getElementById('editorBox').innerText = "ဘယ်ဘက်ခြမ်းမှ မြန်မာစာသားများကို နှိပ်လိုက်လျှင် ဤနေရာသို့ စုစည်းပေးပါမည်...";
 }
